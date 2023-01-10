@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     ",
     Adjective, Noun, Phrase, Doge);
 
-  /* Do some parsing here... */
+  /* Do some parsing her(10 * 2) / (4 + 2)	是	/ (* 10 2) (+ 4 2)e... */
 
   mpc_cleanup(4, Adjective, Noun, Phrase, Doge);
   

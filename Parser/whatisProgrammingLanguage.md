@@ -138,5 +138,157 @@ mpc_cleanup(4, Adjective, Noun, Phrase, Doge);
 
 本章是关于理论的，所以如果你打算尝试一些奖励任务，不要太担心正确性。以正确的心态思考更为重要。随意为某些概念发明符号和符号，使它们更容易写下来。一些奖励任务也可能需要循环或递归语法结构，所以如果您必须使用这些，请不要担心！
 
+包含的mpc解析器
+https://github.com/orangeduck/mpc
+
+# Parsing
+
+## 波兰语
+
+为了尝试，mpc我们将实现一个类似于 Lisp 的数学子集的简单语法。它称为波兰表示法，是一种算术表示法，其中运算符位于操作数之前。
+
+例如:
+  1 + 2 + 6	是	+ 1 2 6
+  6 + (2 * 9)	是	+ 6 (* 2 9)
+  (10 * 2) / (4 + 2)	是	/ (* 10 2) (+ 4 2)
+
+
+我们需要制定一个描述这种符号的语法。我们可以从文字描述开始，然后再将我们的想法形式化。
+
+首先，我们观察到，在波兰语中，运算符总是在表达式中排在第一位，后面是括号中的数字或其他表达式。这意味着我们可以说“一个程序是一个运算符后跟一个或多个表达式”，其中“一个表达式是一个数字，或者在括号中是一个运算符后跟一个或多个表达式”。
+
+more formally
+
+  Program input 的开始，一个`Operator`，一个或多个`Expression`，以及input 的结束。
+  Expression 一个`Number` 或 `'('`，一个`Operator`，一个或多个`Expression`，和一个`')'`
+  Operator `'+'`、`'-'`、`'*'`或`'/'`。
+  Number 可选的, 和之间的-一个或多个字符`0` `9`
+
+
+# Regular Expressions
+我们应该能够使用已知的东西对上述大部分规则进行编码，但Number和Program可能会带来一些麻烦。它们包含一些我们还没有学会如何表达的结构。我们不知道如何表达输入的开始或结束、可选字符或字符范围。
+
+这些可以表达，但它们需要称为正则表达式的东西。正则表达式是一种为小部分文本（例如单词或数字）编写语法的方法。使用正则表达式编写的语法不能由多个规则组成，但它们确实对匹配和不匹配的内容提供了精确和简洁的控​​制。下面是编写正则表达式的一些基本规则。
+
+  `.`	需要任何字符。  
+
+  `a`	字符a是必需的。 
+
+  `[abcdef]`	集合中的任何字符abcdef都是必需的。  
+
+  `[a-f]`	a范围内的任何字符f都是必需的。  
+
+  `a?`	该字符a是可选的。 
+
+  `a*`	需要零个或多个字符a。 
+
+  `a+`	需要一个或多个字符a。 
+
+  `^`	输入的开始是必需的。  
+
+  `$`	输入结束是必需的。  、
+
+
+这些就是我们现在需要的所有正则表达式规则。都是关于学习正则表达式的。对于好奇的更多信息，可以在网上或从这些来源找到。我们将在后面的章节中使用它们，因此需要一些基本知识，但您暂时不需要掌握它们。
+
+在mpc语法中，我们通过将正则表达式放在正斜杠之间来编写正则表达式/。使用上面的指南，我们的数字规则可以表示为使用字符串的正则表达式/-?[0-9]+/。
+
+# Installing mpc
+
+在我们开始编写这个语法之前，我们首先需要包含头`mpc`文件，然后链接到`mpc`库，就像我们`editline`在 Linux 和 Mac 上所做的那样。从第 4 章的代码开始，您可以将文件重命名为`mpc repo`并从中`parsing.c`下载。将它们放在与源文件相同的目录中。`mpc.h` `mpc.c`
+
+包括  `mpc` 放置在  #include `"mpc.h"`文件的顶部。要链接直接`mpc`放入`mpc.c`编译命令。在 Linux 上，您还必须通过添加标志来链接到数学库-lm。  
+
+在Linux 和Mac上 
+
+`cc -std=c99 -Wall parsing.c mpc.c -ledit -lm -o parsing`
+
+在Windows上
+`cc -std=c99 -Wall parsing.c mpc.c -o parsing`
+
+# Polish Notation Grammar
+
+进一步形式化上述规则，并使用一些正则表达式，我们可以为波兰符号语言编写如下最终语法。阅读下面的代码并验证它是否符合我们所写的文本以及我们 的波兰符号的想法。 
+
+```c
+/* Create Some Parsers */
+mpc_parser_t* Number   = mpc_new("number");
+mpc_parser_t* Operator = mpc_new("operator");
+mpc_parser_t* Expr     = mpc_new("expr");
+mpc_parser_t* Lispy    = mpc_new("lispy");
+
+/* Define them with the following Language */
+mpca_lang(MPCA_LANG_DEFAULT,
+  "                                                     \
+    number   : /-?[0-9]+/ ;                             \
+    operator : '+' | '-' | '*' | '/' ;                  \
+    expr     : <number> | '(' <operator> <expr>+ ')' ;  \
+    lispy    : /^/ <operator> <expr>+ /$/ ;             \
+  ",
+  Number, Operator, Expr, Lispy);
+```
+
+我们需要将此添加到我们在第 4 章开始的交互式提示中。在打印版本和退出信息之前将此代码放在main函数的开头。在我们的程序结束时，我们还需要在完成解析器后删除它们。在返回之前，我们应该放置以下清理代码。main 
+
+```c
+/* Undefine and Delete our Parsers */
+mpc_cleanup(4, Number, Operator, Expr, Lispy);
+```
+
+# Parsing User Input
+
+我们的新代码为我们的波兰表示法mpc语言创建了一个解析器，但我们仍然需要在每次从提示中提供的用户输入中实际使用它。我们需要编辑我们的循环，以便它不只是回显用户输入，而是实际尝试使用我们的解析器解析输入。我们可以通过使用以下代码替换对的调用来完成此操作，该代码使用了我们的程序解析器。 
+
+`while` `printf` `mpc` `Lispy`  
+
+```c
+/* Attempt to Parse the user Input */
+mpc_result_t r;
+if (mpc_parse("<stdin>", input, Lispy, &r)) {
+  /* On Success Print the AST */
+  mpc_ast_print(r.output);
+  mpc_ast_delete(r.output);
+} else {
+  /* Otherwise Print the Error */
+  mpc_err_print(r.error);
+  mpc_err_delete(r.error);
+}
+```
+`mpc_parse`此代码使用我们的解析器`Lispy`和输入字符串调用该函数`input`。它将解析的结果复制到r并1在成功和0失败时返回。当我们将它传递给函数时，我们使用 operator `&` on的地址。`r`该运算符将在后面的章节中进行更详细的解释。
+
+成功时，内部结构被复制到`r`, in the field 中`output`。我们可以使用 打印出这个结构`mpc_ast_print`并使用 删除它`mpc_ast_delete`。
+
+否则出现错误，将其复制到r字段中error。我们可以使用 打印出来并使用`mpc_err_print`删除它`mpc_err_delete`。
+
+编译这些更新，并试一试这个程序。尝试不同的输入，看看系统如何反应。正确的行为应如下所示。
+
+```c
+Lispy Version 0.0.0.0.2
+Press Ctrl+c to Exit
+
+lispy> + 5 (* 2 2)
+>
+  regex
+  operator|char:1:1 '+'
+  expr|number|regex:1:3 '5'
+  expr|>
+    char:1:5 '('
+    operator|char:1:6 '*'
+    expr|number|regex:1:8 '2'
+    expr|number|regex:1:10 '2'
+    char:1:11 ')'
+  regex
+lispy> hello
+<stdin>:1:1: error: expected whitespace, '+', '-', '*' or '/' at 'h'
+lispy> / 1dog
+<stdin>:1:4: error: expected one of '0123456789', whitespace, '-', one or more of one of '0123456789', '(' or end of input at 'd'
+lispy>
+```
+
+
+
+
+
+
 
 
